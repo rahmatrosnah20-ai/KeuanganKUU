@@ -1,9 +1,24 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1d5c4b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KEUANGANKU">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
 <title>KEUANGANKU</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+[hidden]{display:none!important}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 /* Layout: buku kas — ringkasan di atas, formulir di kiri, daftar transaksi di kanan; satu kolom di ponsel */
 :root{
   --bg:#f3f5f2; --paper:#ffffff; --ink:#18231f; --muted:#5d6b65; --line:#dde3df;
@@ -129,7 +144,8 @@ input,select{width:100%;border:1px solid var(--line);background:var(--paper);bor
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
-
+</head>
+<body>
 <div class="wrap">
   <header>
     <div>
@@ -179,6 +195,17 @@ input,select{width:100%;border:1px solid var(--line);background:var(--paper);bor
         <div class="panel-head"><h2>Pengeluaran per kategori</h2></div>
         <div class="cats" id="cats"></div>
       </section>
+
+      <section class="panel">
+        <h2>Cadangan data</h2>
+        <p class="hint" style="margin:0">Data tersimpan di browser perangkat ini. Unduh cadangan secara berkala, lalu pulihkan di perangkat lain atau setelah membersihkan browser.</p>
+        <div class="formbtns">
+          <button class="btn ghost small" type="button" id="backupBtn">Unduh cadangan</button>
+          <button class="btn ghost small" type="button" id="restoreBtn">Pulihkan dari file</button>
+          <input type="file" id="restoreFile" accept=".json,application/json" hidden>
+        </div>
+        <div class="msg" id="bMsg" role="status"></div>
+      </section>
     </div>
 
     <div class="side">
@@ -193,7 +220,7 @@ input,select{width:100%;border:1px solid var(--line);background:var(--paper);bor
       <section class="panel">
         <div class="panel-head">
           <h2>Transaksi</h2>
-          <button class="btn ghost small" id="exportBtn" hidden>Unduh CSV</button>
+          <button class="btn ghost small" id="exportBtn">Unduh CSV</button>
         </div>
         <div class="filters">
           <input id="q" type="search" placeholder="Cari keterangan atau kategori">
@@ -230,7 +257,6 @@ let type="out";
 let editingId=null;
 let confirmId=null;
 let store=null; // {save(tx), remove(id), mode}
-let downloads=null;
 
 /* ---------- Storage ---------- */
 const LS="bukukas.tx.v1";
@@ -244,24 +270,8 @@ function useLocal(note){
   $("status").textContent=note;
   render();
 }
-async function init(){
-  render();
-  if(!window.claude||!window.claude.use){useLocal("Data tersimpan di browser ini.");return}
-  try{
-    const [db,user,dl]=await Promise.all([claude.use("db"),claude.use("user"),claude.use("downloads")]);
-    downloads=dl; $("exportBtn").hidden=!downloads;
-    const uid=user?await user.id():null;
-    if(!db||!uid){useLocal("Data tersimpan di browser ini. Masuk ke akun untuk menyimpan ke akun Anda.");return}
-    const col=db.doc("data/users/"+uid+"/kas").collection("tx");
-    store={mode:"db",
-      async save(t){const {id,...body}=t;await col.doc(id).set(body)},
-      async remove(id){await col.doc(id).delete()}};
-    $("status").textContent="Tersimpan di akun Anda dan hanya bisa dilihat oleh Anda.";
-    col.onSnapshot(snap=>{
-      txs=snap.docs.map(d=>({id:d.id,...d.data()}));
-      render();
-    },e=>{ $("status").textContent="Koneksi data terputus. Muat ulang halaman untuk menyambung lagi."; });
-  }catch(e){useLocal("Data tersimpan di browser ini.")}
+function init(){
+  useLocal("Data tersimpan di perangkat ini. Buat cadangan secara berkala.");
 }
 
 /* ---------- Form ---------- */
@@ -359,14 +369,35 @@ async function clearSample(){
   for(const t of txs.filter(x=>x.sample))await store.remove(t.id);
 }
 
-/* ---------- Export ---------- */
-$("exportBtn").onclick=async()=>{
-  if(!downloads)return;
+/* ---------- Export, cadangan & pulihkan ---------- */
+function saveFile(name,text,mime){
+  const url=URL.createObjectURL(new Blob([text],{type:mime}));
+  const a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+$("exportBtn").onclick=()=>{
   const rows=[["Tanggal","Jenis","Kategori","Keterangan","Jumlah"]].concat(
     [...txs].sort((a,b)=>a.date.localeCompare(b.date)).map(t=>[t.date,t.type==="in"?"Pemasukan":"Pengeluaran",t.cat,t.note||"",t.type==="in"?t.amount:-t.amount]));
   const csv=rows.map(r=>r.map(v=>{v=String(v);return /[",\n;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(",")).join("\n");
-  try{await downloads.save({filename:"keuanganku-"+todayStr()+".csv",data:"﻿"+csv})}catch(e){}
+  saveFile("keuanganku-"+todayStr()+".csv","\ufeff"+csv,"text/csv");
 };
+$("backupBtn").onclick=()=>{
+  saveFile("keuanganku-cadangan-"+todayStr()+".json",JSON.stringify({app:"keuanganku",v:1,tx:txs},null,1),"application/json");
+  $("bMsg").className="msg";$("bMsg").textContent="File cadangan diunduh. Simpan di tempat aman.";
+};
+$("restoreBtn").onclick=()=>$("restoreFile").click();
+$("restoreFile").addEventListener("change",async e=>{
+  const f=e.target.files[0];e.target.value="";if(!f)return;
+  const m=$("bMsg");
+  try{
+    const d=JSON.parse(await f.text());const list=Array.isArray(d)?d:d.tx;
+    if(!Array.isArray(list))throw 0;
+    const ok=list.filter(t=>t&&t.id&&(t.type==="in"||t.type==="out")&&typeof t.amount==="number"&&/^\d{4}-\d{2}-\d{2}$/.test(t.date));
+    const map=new Map(txs.map(t=>[t.id,t]));ok.forEach(t=>map.set(t.id,t));
+    txs=[...map.values()];lsWrite();render();
+    m.className="msg";m.textContent=ok.length+" transaksi dipulihkan.";
+  }catch(err){m.className="msg err";m.textContent="File tidak bisa dibaca. Pilih file cadangan KEUANGANKU (.json).";}
+});
 
 /* ---------- Render ---------- */
 function render(){
@@ -461,4 +492,5 @@ init();
 })();
 </script>
 
-</body></html>
+</body>
+</html>
