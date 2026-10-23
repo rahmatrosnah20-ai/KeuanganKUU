@@ -187,20 +187,50 @@ dialog .x{border:0;background:transparent;font-size:1.4rem;color:var(--muted);wi
 .dfoot .right{display:flex;gap:8px;margin-left:auto}
 .err{color:var(--out);font-size:.84rem;min-height:1.1em;margin:0}
 
+/* Akun & kunci */
+.gated .top,.gated main,.gated .fab{display:none}
+.gated::before{display:none}
+.acct{width:36px;height:36px;border-radius:50%;border:0;background:var(--accent);color:var(--on-accent);font-weight:700;font-size:.95rem;flex:none}
+#auth{min-height:100dvh;display:grid;place-items:center;padding-block:28px}
+.authcard{width:min(400px,100%);display:grid;gap:18px}
+.authbrand{display:grid;gap:6px;justify-items:center;text-align:center}
+.authbrand img{width:64px;height:64px;border-radius:16px}
+.authbrand h1{font-size:1.9rem}
+.authbox{display:grid;gap:12px;background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:20px}
+.authbox .btn{padding:12px 14px;font-size:.95rem}
+.linkbtn{border:0;background:none;color:var(--accent);font-weight:600;padding:6px 2px;font-size:.88rem}
+.authfoot{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.okmsg{color:var(--in);font-size:.86rem;margin:0}
+.pin{display:grid;gap:20px;justify-items:center;text-align:center}
+.pin p{margin:0}
+.dots{display:flex;gap:14px;height:16px}
+.dots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--accent)}
+.dots i.on{background:var(--accent)}
+.dots.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+.keypad{display:grid;grid-template-columns:repeat(3,72px);gap:14px}
+.keypad button{height:72px;border-radius:50%;border:1px solid var(--line);background:var(--paper);font-family:var(--f-num);font-size:1.5rem;color:var(--ink)}
+.keypad button:active{background:var(--accent-soft)}
+.keypad .k2{border:0;background:transparent;font-family:var(--f-body);font-size:.8rem;font-weight:600;color:var(--accent);line-height:1.2}
+.keypad .k2:disabled{visibility:hidden}
+.acctlist{display:grid;gap:8px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 84px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:.88rem;z-index:20;max-width:calc(100vw - 32px)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
-<body>
+<body class="gated">
 
 <header class="top gutter">
   <div class="inner">
     <div class="brand">
       <h1>KEUANGANKU</h1>
+      <div class="row">
       <div class="monthnav" role="group" aria-label="Pilih bulan" id="monthnav">
         <button id="prevM" aria-label="Bulan sebelumnya">‹</button>
         <span id="monthLabel">—</span>
         <button id="nextM" aria-label="Bulan berikutnya">›</button>
+      </div>
+      <button class="acct" id="acctBtn" aria-label="Akun">?</button>
       </div>
     </div>
     <nav class="tabs" role="tablist" id="tabs">
@@ -215,6 +245,7 @@ dialog .x{border:0;background:transparent;font-size:1.4rem;color:var(--muted);wi
   </div>
 </header>
 
+<div id="auth" class="gutter"><div class="authcard"><div class="authbrand"><img src="icon-192.png" alt=""><h1>KEUANGANKU</h1><p class="hint">Memuat…</p></div></div></div>
 <main class="gutter"><div class="inner" id="view"></div></main>
 
 <button class="fab" id="fab" aria-label="Catat transaksi"><b>+</b> Catat</button>
@@ -256,6 +287,7 @@ function normalize(raw){
   if(!s.wallets.length) s.wallets=emptyState().wallets;
   const wids=new Set(s.wallets.map(w=>w.id));
   s.tx=s.tx.filter(t=>t&&t.id&&["in","out","tf"].includes(t.type)&&typeof t.amount==="number"&&t.amount>0&&/^\d{4}-\d{2}-\d{2}$/.test(t.date));
+  {const seen=new Set();s.tx=s.tx.filter(t=>seen.has(t.id)?false:(seen.add(t.id),true))}
   s.tx.forEach(t=>{if(!wids.has(t.wallet))t.wallet=s.wallets[0].id;if(t.type==="tf"&&!wids.has(t.to))t.to=s.wallets[0].id});
   s.debts.forEach(d=>{if(!Array.isArray(d.payments))d.payments=[]});
   s.goals.forEach(g=>{if(!Array.isArray(g.history))g.history=[]});
@@ -307,27 +339,51 @@ function nextRecurringDate(r,today){
   for(let i=0;i<24;i++){const d=m+"-"+pad(Math.min(r.day||1,daysIn(m)));if(!r.posted.includes(m)&&d>=today)return d;m=shiftMonth(m,1)}
   return null;
 }
-if(typeof module!=="undefined")module.exports={normalize,walletBalance,totalBalance,monthTotals,postRecurring,nextRecurringDate,emptyState,shiftMonth,daysIn,goalSaved,debtLeft,budgetStatus};
+/* Data akun disimpan sebagai 1 dokumen "meta" + 1 dokumen transaksi per tahun */
+function stable(v){if(Array.isArray(v))return "["+v.map(stable).join(",")+"]";if(v&&typeof v==="object")return "{"+Object.keys(v).filter(k=>v[k]!==undefined).sort().map(k=>JSON.stringify(k)+":"+stable(v[k])).join(",")+"}";return JSON.stringify(v===undefined?null:v)}
+function splitState(s){const years={};for(const t of s.tx){const y=t.date.slice(0,4);(years[y]||(years[y]=[])).push(t)}const meta=Object.assign({},s);delete meta.tx;return {meta:JSON.parse(JSON.stringify(meta)),years:JSON.parse(JSON.stringify(years))}}
+function joinState(meta,years){return normalize(Object.assign({},meta||{},{v:2,tx:[].concat(...Object.values(years||{}))}))}
+if(typeof module!=="undefined")module.exports={stable,splitState,joinState,normalize,walletBalance,totalBalance,monthTotals,postRecurring,nextRecurringDate,emptyState,shiftMonth,daysIn,goalSaved,debtLeft,budgetStatus};
 </script>
 
 <script>
 (function(){
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const KEY="keuanganku.v2", OLD="bukukas.tx.v1";
+const LEGACY=["keuanganku.v2","bukukas.tx.v1"];
 
-/* ---------- Penyimpanan ---------- */
-let S;
-function load(){
-  let raw=null;
-  try{const v2=localStorage.getItem(KEY);if(v2)raw=JSON.parse(v2);else{const v1=localStorage.getItem(OLD);if(v1)raw=JSON.parse(v1)}}catch(e){}
-  S=normalize(raw);
+/* ---------- Penyimpanan ke akun ---------- */
+let S=emptyState();
+let cloud=null,user=null,unsub=null,gate="loading",firstServer=false,lastMeta="",lastYears={};
+function save(){
+  if(!cloud||!user)return;
+  const p=splitState(S),ch={years:{},deleteYears:[]};let any=false;
+  const mj=stable(p.meta);if(mj!==lastMeta){ch.meta=p.meta;lastMeta=mj;any=true}
+  for(const [y,tx] of Object.entries(p.years)){const j=stable(tx);if(j!==lastYears[y]){ch.years[y]=tx;lastYears[y]=j;any=true;if(j.length>900000)toast("Catatan tahun "+y+" hampir mencapai batas penyimpanan.")}}
+  for(const y of Object.keys(lastYears))if(!p.years[y]){ch.deleteYears.push(y);delete lastYears[y];any=true}
+  if(any)cloud.write(user.uid,ch).catch(e=>toast("Gagal menyimpan ke akun: "+(e&&e.message||"periksa koneksi")+". Coba lagi."));
+}
+function commit(msg){save();render();if(msg)toast(msg)}
+function onCloud(d){
+  const S2=joinState(d.meta,d.years),p=splitState(S2),cur=splitState(S);
+  lastMeta=stable(p.meta);lastYears={};for(const [y,t] of Object.entries(p.years))lastYears[y]=stable(t);
+  if(stable(p)!==stable(cur)){S=S2;if(gate==="open")render()}
+  if(d.fromServer&&!firstServer){firstServer=true;afterFirstSync(d)}
+}
+function afterFirstSync(d){
+  const empty=!Object.keys(d.meta||{}).length&&!Object.keys(d.years||{}).length;
+  let msg="";
+  if(empty){
+    for(const k of LEGACY){let raw=null;try{raw=localStorage.getItem(k)}catch(e){}
+      if(raw){try{const old=normalize(JSON.parse(raw));if(old.tx.length||old.wallets.length>1){S=old;msg="Catatan lama di perangkat ini dipindahkan ke akun Anda."}}catch(e){}
+        try{localStorage.setItem(k+".dipindahkan",raw);localStorage.removeItem(k)}catch(e){}break}}
+  }
   const n=postRecurring(S);
   save();
-  if(n)setTimeout(()=>toast(n+" transaksi rutin dicatat otomatis."),400);
+  if(n)msg=(msg?msg+" ":"")+n+" transaksi rutin dicatat otomatis.";
+  if(msg)setTimeout(()=>toast(msg),300);
+  if(gate==="open")render();
 }
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast("Gagal menyimpan. Penyimpanan browser penuh atau dinonaktifkan.")}}
-function commit(msg){save();render();if(msg)toast(msg)}
 
 let tab="beranda", month=todayStr().slice(0,7), year=Number(todayStr().slice(0,4));
 let filt={q:"",type:"all",wallet:"all",cat:"all"};
@@ -684,7 +740,7 @@ function viewLaporan(){
       ${big.length?`<h3>Pengeluaran terbesar</h3><div class="list">${txRows(big,false)}</div>`:""}
     </section>
   </div>
-  <section class="panel"><div><h2>Data & cadangan</h2><p class="hint">Semua catatan tersimpan di browser perangkat ini. Unduh cadangan secara berkala, lalu pulihkan di perangkat lain atau setelah membersihkan browser.</p></div>
+  <section class="panel"><div><h2>Data & cadangan</h2><p class="hint">Catatan tersimpan di akun Anda dan sama di semua perangkat yang masuk dengan email ini. File cadangan berguna sebagai salinan pribadi.</p></div>
     <div class="row"><button class="btn small" data-act="backup">Unduh cadangan</button><button class="btn ghost small" data-act="restore">Pulihkan dari file</button><button class="btn ghost small" data-act="csv">Unduh CSV transaksi</button>
       ${S.tx.some(t=>t.sample)||S.wallets.some(w=>w.sample)?`<button class="btn ghost small" data-act="clearSample">Hapus data contoh</button>`:`<button class="btn ghost small" data-act="sample">Isi data contoh</button>`}
       <button class="btn ghost small" data-act="reset">Hapus semua data</button></div>
@@ -696,6 +752,7 @@ function viewLaporan(){
 /* ---------- Render ---------- */
 const VIEWS={beranda:viewBeranda,transaksi:viewTransaksi,dompet:viewDompet,anggaran:viewAnggaran,target:viewTarget,utang:viewUtang,laporan:viewLaporan};
 function render(){
+  if(gate!=="open")return;
   $("monthLabel").textContent=monthName(month);
   $("monthnav").hidden=["target","utang","laporan"].includes(tab);
   document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===tab));
@@ -741,7 +798,7 @@ const ACTS={
   restore:()=>$("restoreFile").click(),
   csv:()=>{const rows=[["Tanggal","Jenis","Kategori","Dompet","Ke dompet","Keterangan","Jumlah"]].concat([...S.tx].sort((a,b)=>a.date.localeCompare(b.date)).map(t=>[t.date,t.type==="in"?"Pemasukan":t.type==="out"?"Pengeluaran":"Transfer",t.cat||"",wName(t.wallet),t.type==="tf"?wName(t.to):"",t.note||"",t.type==="out"?-t.amount:t.amount]));
     saveFile("keuanganku-"+todayStr()+".csv","﻿"+rows.map(r=>r.map(v=>{v=String(v);return /[",\n;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(",")).join("\n"),"text/csv")},
-  reset:b=>{const box=$("resetBox");box.hidden=false;box.innerHTML=`Semua dompet, transaksi, anggaran, target, dan utang akan dihapus dari perangkat ini. <button class="btn danger small" data-act="resetYes">Ya, hapus semua</button> <button class="btn ghost small" data-act="resetNo">Batal</button>`},
+  reset:b=>{const box=$("resetBox");box.hidden=false;box.innerHTML=`Semua dompet, transaksi, anggaran, target, dan utang akan dihapus dari akun Anda di semua perangkat. <button class="btn danger small" data-act="resetYes">Ya, hapus semua</button> <button class="btn ghost small" data-act="resetNo">Batal</button>`},
   resetYes:()=>{S=emptyState();commit("Semua data dihapus.")},
   resetNo:()=>{$("resetBox").hidden=true}
 };
@@ -785,10 +842,253 @@ function loadSample(){
 
 /* ---------- Mulai ---------- */
 let rz;let lastNarrow=window.innerWidth<640;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{const n=window.innerWidth<640;if(n!==lastNarrow){lastNarrow=n;render()}},200)});
-load();
 const h=(location.hash||"").slice(1);if(VIEWS[h])tab=h;
-render();
+
+/* ================= Akun, PIN, dan biometrik ================= */
+const IS_IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+const IS_ANDROID=/Android/.test(navigator.userAgent);
+const BIO=IS_IOS?"Face ID / Touch ID":IS_ANDROID?"sidik jari":"biometrik perangkat";
+const PIN_LEN=6,MAX_FAIL=5,LOCK_AFTER_MS=60000;
+let authMode="login",authMsg="",authOk="",authBusy=false,pinBuf="",pinFirst=null,pinMsg="",bioOk=false,bioTried=false,hiddenAt=0,loadTimer=null;
+
+const b64=buf=>btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+const b64d=s=>{s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";return Uint8Array.from(atob(s),c=>c.charCodeAt(0))};
+const lockKey=()=>"keuanganku.kunci."+(user&&user.uid);
+function getLock(){try{return JSON.parse(localStorage.getItem(lockKey())||"null")}catch(e){return null}}
+function setLock(l){try{if(l)localStorage.setItem(lockKey(),JSON.stringify(l));else localStorage.removeItem(lockKey())}catch(e){}}
+async function hashPin(pin,salt){
+  const k=await crypto.subtle.importKey("raw",new TextEncoder().encode(pin),"PBKDF2",false,["deriveBits"]);
+  return b64(await crypto.subtle.deriveBits({name:"PBKDF2",salt:b64d(salt),iterations:150000,hash:"SHA-256"},k,256));
+}
+async function bioAvailable(){try{return !!(window.PublicKeyCredential&&location.hostname&&await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable())}catch(e){return false}}
+async function bioCreate(){
+  const c=await navigator.credentials.create({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),rp:{name:"KEUANGANKU",id:location.hostname},
+    user:{id:crypto.getRandomValues(new Uint8Array(16)),name:user.email,displayName:user.email},
+    pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],
+    authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required",residentKey:"preferred"},timeout:60000,attestation:"none"}});
+  return b64(c.rawId);
+}
+async function bioGet(id){
+  const a=await navigator.credentials.get({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),rpId:location.hostname,
+    allowCredentials:[{type:"public-key",id:b64d(id)}],userVerification:"required",timeout:60000}});
+  return !!a;
+}
+const AUTH_ERR={"auth/invalid-email":"Format email tidak valid.","auth/missing-password":"Isi kata sandi.","auth/invalid-credential":"Email atau kata sandi salah.","auth/invalid-login-credentials":"Email atau kata sandi salah.","auth/wrong-password":"Email atau kata sandi salah.","auth/user-not-found":"Email belum terdaftar. Pilih Daftar akun baru.","auth/email-already-in-use":"Email ini sudah terdaftar. Silakan masuk.","auth/weak-password":"Kata sandi terlalu lemah. Gunakan minimal 8 karakter.","auth/too-many-requests":"Terlalu banyak percobaan. Tunggu beberapa menit lalu coba lagi.","auth/network-request-failed":"Tidak ada koneksi internet. Periksa jaringan lalu coba lagi.","auth/operation-not-allowed":"Login email belum diaktifkan di Firebase (Authentication → Sign-in method → Email/Password).","auth/unauthorized-domain":"Alamat aplikasi belum diizinkan di Firebase (Authentication → Settings → Authorized domains).","auth/user-disabled":"Akun ini dinonaktifkan."};
+const authErr=e=>AUTH_ERR[e&&e.code]||(e&&e.code&&e.code.indexOf("api-key")>=0?"Konfigurasi Firebase tidak valid. Periksa file firebase-config.js.":"Terjadi kesalahan"+(e&&e.code?" ("+e.code+")":"")+". Coba lagi.");
+
+function setGate(g){
+  gate=g;
+  const open=g==="open";
+  document.body.classList.toggle("gated",!open);
+  $("auth").hidden=open;
+  if(open){$("auth").innerHTML="";$("acctBtn").textContent=(user&&user.email||"?").charAt(0).toUpperCase();render();return}
+  $("view").innerHTML="";const dlg=$("dlg");if(dlg.open)dlg.close();
+  drawGate();
+}
+const brand=sub=>`<div class="authbrand"><img src="icon-192.png" alt=""><h1>KEUANGANKU</h1>${sub?`<p class="hint">${sub}</p>`:""}</div>`;
+function pinPad(title,sub,bioBtn){
+  return `<div class="authcard pin">${brand("")}<div><h2>${esc(title)}</h2>${sub?`<p class="hint">${sub}</p>`:""}</div>
+    <div class="dots" id="dots" aria-label="${pinBuf.length} dari ${PIN_LEN} angka">${Array.from({length:PIN_LEN},(_,i)=>`<i class="${i<pinBuf.length?"on":""}"></i>`).join("")}</div>
+    <p class="err" role="alert">${esc(pinMsg)}</p>
+    <div class="keypad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button type="button" data-k="${n}">${n}</button>`).join("")}
+      <button type="button" class="k2" data-k="bio" ${bioBtn?"":"disabled"}>${bioBtn?esc(bioBtn):""}</button><button type="button" data-k="0">0</button><button type="button" class="k2" data-k="del" aria-label="Hapus">⌫</button></div>
+    ${gate==="locked"?`<button type="button" class="linkbtn" data-a="forgot">Lupa PIN? Masuk dengan email</button>`:gate==="setpin"&&getLock()?`<button type="button" class="linkbtn" data-a="cancelpin">Batal</button>`:""}</div>`;
+}
+function drawGate(err){
+  const A=$("auth");let h="";
+  if(gate==="nocloud"){
+    h=`<div class="authcard">${brand("")}<div class="authbox"><h2>Server akun belum tersambung</h2><p class="hint">Aplikasi ini membutuhkan proyek Firebase untuk daftar dan masuk akun. Isi file <b>firebase-config.js</b> dengan konfigurasi proyek Firebase Anda.</p>${err?`<p class="err">${esc(err.message||err)}</p>`:""}</div></div>`;
+  }else if(gate==="loading"){
+    h=`<div class="authcard">${brand(authMsg||"Memuat data akun…")}</div>`;
+  }else if(gate==="auth"){
+    const m=authMode;
+    h=`<div class="authcard">${brand(m==="register"?"Buat akun untuk menyimpan catatan keuangan Anda.":m==="reset"?"Atur ulang kata sandi.":"Catatan keuangan pribadi Anda.")}
+      <form class="authbox" id="authForm" novalidate>
+        <h2>${m==="register"?"Daftar akun baru":m==="reset"?"Lupa kata sandi":"Masuk"}</h2>
+        <label class="f">Email<input id="aEmail" type="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" required></label>
+        ${m!=="reset"?`<label class="f">Kata sandi<input id="aPass" type="password" autocomplete="${m==="register"?"new-password":"current-password"}" required>${m==="register"?`<span class="hint">Minimal 8 karakter.</span>`:""}</label>`:""}
+        ${m==="register"?`<label class="f">Ulangi kata sandi<input id="aPass2" type="password" autocomplete="new-password" required></label>`:""}
+        ${m==="reset"?`<p class="hint">Kami kirim tautan untuk membuat kata sandi baru ke email Anda.</p>`:""}
+        <p class="err" role="alert">${esc(authMsg)}</p>${authOk?`<p class="okmsg">${esc(authOk)}</p>`:""}
+        <button class="btn" type="submit" ${authBusy?"disabled":""}>${authBusy?"Memproses…":m==="register"?"Daftar":m==="reset"?"Kirim tautan":"Masuk"}</button>
+        <div class="authfoot">${m==="login"?`<button type="button" class="linkbtn" data-mode="register">Daftar akun baru</button><button type="button" class="linkbtn" data-mode="reset">Lupa kata sandi?</button>`:`<button type="button" class="linkbtn" data-mode="login">Sudah punya akun? Masuk</button>`}</div>
+      </form></div>`;
+  }else if(gate==="setpin"){
+    h=pinPad(pinFirst?"Ulangi PIN":"Buat PIN "+PIN_LEN+" angka",pinFirst?"Masukkan PIN yang sama sekali lagi.":"PIN dipakai untuk membuka aplikasi dengan cepat di perangkat ini.",null);
+  }else if(gate==="bioask"){
+    h=`<div class="authcard">${brand("")}<div class="authbox"><h2>Aktifkan ${esc(BIO)}?</h2><p class="hint">Buka KEUANGANKU dengan ${esc(BIO)} tanpa mengetik PIN. PIN tetap bisa dipakai kapan saja.</p>
+      ${IS_IOS?`<p class="hint">iPhone akan menawarkan untuk menyimpan "kunci sandi" (passkey). Pilih Lanjutkan.</p>`:""}
+      <p class="err" role="alert">${esc(pinMsg)}</p>
+      <button class="btn" type="button" data-a="bioOn">Aktifkan ${esc(BIO)}</button><button class="btn ghost" type="button" data-a="bioSkip">Lain kali</button></div></div>`;
+  }else if(gate==="locked"){
+    const L=getLock();
+    h=pinPad("Masukkan PIN",esc(user.email),L&&L.cred&&bioOk?(IS_IOS?"Face ID":IS_ANDROID?"Sidik jari":"Biometrik"):null);
+  }
+  A.innerHTML=h;
+  const em=$("aEmail");if(em){em.value=A.dataset.email||"";setTimeout(()=>(em.value?($("aPass")||em):em).focus(),30)}
+}
+function redrawDots(shake){
+  const d=$("dots");if(!d){drawGate();return}
+  d.innerHTML=Array.from({length:PIN_LEN},(_,i)=>`<i class="${i<pinBuf.length?"on":""}"></i>`).join("");
+  const e=$("auth").querySelector(".err");if(e)e.textContent=pinMsg;
+  if(shake){d.classList.remove("shake");void d.offsetWidth;d.classList.add("shake")}
+}
+
+async function submitAuth(){
+  const email=($("aEmail").value||"").trim(),p1=$("aPass")?$("aPass").value:"",p2=$("aPass2")?$("aPass2").value:"";
+  $("auth").dataset.email=email;authMsg="";authOk="";
+  if(!/^\S+@\S+\.\S+$/.test(email)){authMsg="Isi email yang valid.";drawGate();return}
+  if(authMode==="register"){if(p1.length<8){authMsg="Kata sandi minimal 8 karakter.";drawGate();return}if(p1!==p2){authMsg="Kedua kata sandi tidak sama.";drawGate();return}}
+  if(authMode==="login"&&!p1){authMsg="Isi kata sandi.";drawGate();return}
+  authBusy=true;drawGate();
+  try{
+    if(authMode==="register")await cloud.signUp(email,p1);
+    else if(authMode==="login")await cloud.signIn(email,p1);
+    else{await cloud.reset(email);authOk="Tautan atur ulang kata sandi sudah dikirim ke "+email+". Periksa juga folder spam.";authMode="login"}
+  }catch(e){authMsg=authErr(e)}
+  authBusy=false;if(gate==="auth")drawGate();
+}
+async function pinDone(){
+  const pin=pinBuf;
+  if(gate==="setpin"){
+    if(!pinFirst){pinFirst=pin;pinBuf="";pinMsg="";drawGate();return}
+    if(pin!==pinFirst){pinFirst=null;pinBuf="";pinMsg="PIN tidak sama. Ulangi dari awal.";drawGate();redrawDots(true);return}
+    const old=getLock(),salt=b64(crypto.getRandomValues(new Uint8Array(16)));
+    setLock({salt,hash:await hashPin(pin,salt),cred:old&&old.cred||null,fails:0});
+    pinFirst=null;pinBuf="";pinMsg="";
+    if(!old&&bioOk){setGate("bioask");return}
+    toast(old?"PIN diubah.":"PIN dibuat.");setGate("open");return;
+  }
+  const L=getLock();if(!L){setGate("setpin");return}
+  if(await hashPin(pin,L.salt)===L.hash){L.fails=0;setLock(L);pinBuf="";pinMsg="";setGate("open");return}
+  L.fails=(L.fails||0)+1;setLock(L);pinBuf="";
+  if(L.fails>=MAX_FAIL){await signOutAll("PIN salah "+MAX_FAIL+" kali. Masuk lagi dengan email dan kata sandi.");return}
+  pinMsg="PIN salah. Sisa "+(MAX_FAIL-L.fails)+" percobaan.";redrawDots(true);
+}
+async function tryBio(){
+  const L=getLock();if(!L||!L.cred)return;
+  try{if(await bioGet(L.cred)&&gate==="locked"){L.fails=0;setLock(L);pinBuf="";pinMsg="";setGate("open")}}
+  catch(e){if(e&&e.name!=="NotAllowedError"&&e.name!=="AbortError"){pinMsg=BIO+" tidak bisa dipakai. Gunakan PIN.";redrawDots()}}
+}
+async function signOutAll(msg){
+  setLock(null);if(unsub){unsub();unsub=null}
+  authMode="login";authMsg=msg||"";authOk="";pinBuf="";pinFirst=null;pinMsg="";
+  try{await cloud.signOut()}catch(e){}
+}
+function pinKey(k){
+  if(gate!=="setpin"&&gate!=="locked")return;
+  if(k==="del"){pinBuf=pinBuf.slice(0,-1);redrawDots();return}
+  if(k==="bio"){tryBio();return}
+  if(/^\d$/.test(k)&&pinBuf.length<PIN_LEN){pinBuf+=k;if(pinMsg&&pinBuf.length===1){pinMsg=""}redrawDots();if(pinBuf.length===PIN_LEN)setTimeout(pinDone,120)}
+}
+$("auth").addEventListener("click",async e=>{
+  const b=e.target.closest("button");if(!b)return;
+  if(b.dataset.k)return pinKey(b.dataset.k);
+  if(b.dataset.mode){const em=$("aEmail");if(em)$("auth").dataset.email=em.value;authMode=b.dataset.mode;authMsg="";authOk="";drawGate();return}
+  const a=b.dataset.a;
+  if(a==="forgot")await signOutAll("Masuk dengan email dan kata sandi, lalu buat PIN baru.");
+  else if(a==="cancelpin"){pinBuf="";pinFirst=null;pinMsg="";setGate("open")}
+  else if(a==="bioOn"){b.disabled=true;try{const L=getLock();L.cred=await bioCreate();setLock(L);toast(BIO+" aktif.");setGate("open")}catch(err){pinMsg=BIO+" tidak bisa diaktifkan"+(err&&err.name==="NotAllowedError"?" (dibatalkan)":"")+". Anda bisa mencobanya lagi dari menu Akun.";b.disabled=false;drawGate()}}
+  else if(a==="bioSkip"){pinMsg="";toast("PIN dibuat.");setGate("open")}
+});
+$("auth").addEventListener("submit",e=>{e.preventDefault();if(!authBusy)submitAuth()});
+document.addEventListener("keydown",e=>{if((gate==="setpin"||gate==="locked")&&!e.metaKey&&!e.ctrlKey){if(/^\d$/.test(e.key))pinKey(e.key);else if(e.key==="Backspace")pinKey("del")}});
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden){hiddenAt=Date.now();return}
+  if(gate==="open"&&getLock()&&hiddenAt&&Date.now()-hiddenAt>LOCK_AFTER_MS){bioTried=false;setGate("locked");autoBio()}
+  else if(gate==="open"&&firstServer){const n=postRecurring(S);if(n)commit(n+" transaksi rutin dicatat otomatis.")}
+});
+function autoBio(){const L=getLock();if(gate==="locked"&&L&&L.cred&&bioOk&&!bioTried&&!document.hidden){bioTried=true;setTimeout(tryBio,250)}}
+
+/* Menu akun */
+$("acctBtn").onclick=()=>{
+  const L=getLock()||{};const dlg=$("dlg"),form=$("dlgForm");
+  form.innerHTML=`<div class="dh"><h2>Akun</h2><button type="button" class="x" data-c aria-label="Tutup">×</button></div>
+    <div class="card"><span class="lbl">Masuk sebagai</span><span class="name">${esc(user.email)}</span><span class="kind">${user.verified?"Email terverifikasi":"Email belum diverifikasi"}</span></div>
+    <div class="acctlist">
+      <button type="button" class="btn ghost" data-u="lock">Kunci sekarang</button>
+      <button type="button" class="btn ghost" data-u="pin">Ubah PIN</button>
+      ${bioOk?`<button type="button" class="btn ghost" data-u="bio">${L.cred?"Matikan ":"Aktifkan "}${esc(BIO)}</button>`:""}
+      ${user.verified?"":`<button type="button" class="btn ghost" data-u="verify">Kirim ulang email verifikasi</button>`}
+      <button type="button" class="btn ghost" data-u="out">Keluar dari akun</button>
+    </div>
+    <p class="hint">Catatan tersimpan di akun ini dan sama di semua perangkat. Aplikasi terkunci otomatis jika ditinggalkan lebih dari 1 menit.</p>`;
+  form.onsubmit=e=>e.preventDefault();form.oninput=null;form.onchange=null;
+  form.onclick=async e=>{
+    const b=e.target.closest("button");if(!b)return;
+    if(b.hasAttribute("data-c")){dlg.close();return}
+    const u=b.dataset.u;if(!u)return;
+    if(u==="lock"){dlg.close();bioTried=true;setGate("locked")}
+    else if(u==="pin"){dlg.close();pinBuf="";pinFirst=null;pinMsg="";setGate("setpin")}
+    else if(u==="bio"){const LL=getLock();if(LL.cred){LL.cred=null;setLock(LL);toast(BIO+" dimatikan.");dlg.close()}else{try{LL.cred=await bioCreate();setLock(LL);toast(BIO+" aktif.");dlg.close()}catch(err){toast(BIO+" tidak bisa diaktifkan.")}}}
+    else if(u==="verify"){try{await cloud.verify();toast("Email verifikasi dikirim ke "+user.email+".")}catch(err){toast(authErr(err))}}
+    else if(u==="out"){dlg.close();await signOutAll("Anda sudah keluar.")}
+  };
+  if(!dlg.open)dlg.showModal();
+};
+
+/* Mulai: dipanggil setelah server akun siap */
+window.bootApp=async function(c,err){
+  cloud=c;bioOk=await bioAvailable();
+  if(!cloud){setGate("nocloud");drawGate(err);return}
+  cloud.onAuth(u=>{
+    if(unsub){unsub();unsub=null}
+    clearTimeout(loadTimer);
+    user=u;firstServer=false;S=emptyState();lastMeta="";lastYears={};pinBuf="";pinFirst=null;
+    if(!u){setGate("auth");return}
+    authMsg="";setGate("loading");
+    loadTimer=setTimeout(()=>{if(gate==="loading"){authMsg="Menunggu koneksi internet… Masuk pertama kali di perangkat ini memerlukan internet.";drawGate()}},8000);
+    unsub=cloud.subscribe(u.uid,d=>{
+      onCloud(d);
+      if(gate==="loading"&&(d.fromServer||Object.keys(d.meta||{}).length)){
+        clearTimeout(loadTimer);authMsg="";
+        if(getLock()){bioTried=false;setGate("locked");autoBio()}else{pinMsg="";setGate("setpin")}
+      }
+    },e=>{authMsg="Tidak bisa memuat data akun: "+(e&&e.message||e)+". Muat ulang halaman.";if(gate==="loading")drawGate();else toast(authMsg)});
+  });
+};
 })();
+</script>
+<script src="firebase-config.js"></script>
+<script type="module">
+/* Penghubung ke Firebase (Authentication + Firestore) */
+const cfg=window.FIREBASE_CONFIG;
+if(window.__CLOUD_MOCK__){window.bootApp(window.__CLOUD_MOCK__)}
+else if(!cfg||!cfg.apiKey||/^ISI/.test(cfg.apiKey)){window.bootApp(null)}
+else{
+  try{
+    const V="10.12.2",base="https://www.gstatic.com/firebasejs/"+V+"/";
+    const [{initializeApp},A,F]=await Promise.all([import(base+"firebase-app.js"),import(base+"firebase-auth.js"),import(base+"firebase-firestore.js")]);
+    const app=initializeApp(cfg);
+    const auth=A.getAuth(app);
+    let db;
+    try{db=F.initializeFirestore(app,{ignoreUndefinedProperties:true,localCache:F.persistentLocalCache({tabManager:F.persistentMultipleTabManager()})})}
+    catch(e){db=F.getFirestore(app)}
+    const toUser=u=>u?{uid:u.uid,email:u.email,verified:u.emailVerified}:null;
+    window.bootApp({
+      onAuth:cb=>A.onAuthStateChanged(auth,u=>cb(toUser(u))),
+      signUp:async(e,p)=>{const c=await A.createUserWithEmailAndPassword(auth,e,p);try{await A.sendEmailVerification(c.user)}catch(_){}},
+      signIn:(e,p)=>A.signInWithEmailAndPassword(auth,e,p),
+      signOut:()=>A.signOut(auth),
+      reset:e=>A.sendPasswordResetEmail(auth,e),
+      verify:()=>A.sendEmailVerification(auth.currentUser),
+      subscribe(uid,onData,onErr){
+        let m=null,y=null,ms=false,ys=false;
+        const emit=()=>{if(m!==null&&y!==null)onData({meta:m,years:y,fromServer:ms&&ys})};
+        const u1=F.onSnapshot(F.doc(db,"users",uid),{includeMetadataChanges:true},s=>{m=s.exists()?s.data():{};ms=ms||!s.metadata.fromCache;emit()},onErr);
+        const u2=F.onSnapshot(F.collection(db,"users",uid,"tahun"),{includeMetadataChanges:true},s=>{const o={};s.forEach(d=>o[d.id]=d.data().tx||[]);y=o;ys=ys||!s.metadata.fromCache;emit()},onErr);
+        return()=>{u1();u2()};
+      },
+      write(uid,ch){
+        const b=F.writeBatch(db);
+        if(ch.meta)b.set(F.doc(db,"users",uid),ch.meta);
+        for(const [yr,tx] of Object.entries(ch.years||{}))b.set(F.doc(db,"users",uid,"tahun",yr),{tx});
+        for(const yr of ch.deleteYears||[])b.delete(F.doc(db,"users",uid,"tahun",yr));
+        return b.commit();
+      }
+    });
+  }catch(e){window.bootApp(null,e)}
+}
 </script>
 </body>
 </html>
