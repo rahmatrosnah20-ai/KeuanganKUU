@@ -1,11 +1,10 @@
-/* Konfigurasi proyek Firebase untuk KEUANGANKU.
-   Ganti nilai di bawah dengan konfigurasi dari Firebase Console:
-   Project settings → General → Your apps → Web app → SDK setup and configuration → Config */
+/* Konfigurasi proyek Firebase KEUANGANKU (keuanganku-f959d).
+   Nilai ini memang publik; keamanan data dijaga oleh aturan Firestore (firestore.rules). */
 window.FIREBASE_CONFIG = {
-  apiKey: "ISI_API_KEY",
-  authDomain: "ISI_PROJECT_ID.firebaseapp.com",
-  projectId: "ISI_PROJECT_ID",
-  storageBucket: "ISI_PROJECT_ID.appspot.com",
-  messagingSenderId: "ISI",
-  appId: "ISI"
+  apiKey: "AIzaSyD2VSmoulkdMQ2QMwmGdh2HnjDKE3jt8Xc",
+  authDomain: "keuanganku-f959d.firebaseapp.com",
+  projectId: "keuanganku-f959d",
+  storageBucket: "keuanganku-f959d.firebasestorage.app",
+  messagingSenderId: "176038385833",
+  appId: "1:176038385833:web:81ed475eedc3334681b1b8"
 };
